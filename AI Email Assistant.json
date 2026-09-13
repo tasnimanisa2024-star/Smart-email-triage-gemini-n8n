@@ -1,0 +1,336 @@
+{
+  "name": "AI Email Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "includeSpamTrash": false,
+          "includeDrafts": false,
+          "labelIds": [],
+          "q": "in: inbox -from: me -subject: \"Auto Generated Reply\"",
+          "readStatus": "unread",
+          "sender": ""
+        }
+      },
+      "id": "cfdb161c-5f91-4a0a-86c8-f8a2571cfd40",
+      "name": "On New Email",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -144,
+        -112
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "VmI2qKTL5mlXz8oH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.6-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.6-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an automated email processing AI assistant. Analyze the incoming email provided below and output a strict JSON object with 3 fields: \"category\", \"priority\", and \"draft\". Do not wrap the output in markdown backticks or add any additional text outside the JSON object.\n\nFollow these strict rules:\n\n1. CATEGORY:\nCategorize the email into one of these:\n- Late Delivery\n- Broken Product\n- Order Cancellation\n- General Query\n\n2. PRIORITY:\n- If category is \"Late Delivery\", \"Broken Product\", or \"Order Cancellation\", priority MUST be \"Urgent\".\n- For any other query, priority should be \"Medium\" or \"Low\".\n\n3. DRAFT REPLY:\nWrite a highly formal, polite, and professional email response strictly in ENGLISH.\nFormat the email using proper paragraph breaks (\\n\\n) following this strict structure:\n\nDear Customer,\n\n[Paragraph 1: Thank them for reaching out and acknowledge their issue or Order ID if present.]\n\n[Paragraph 2: Express sincere apologies for the inconvenience caused.]\n\nOur moderator will contact you shortly.\n\nBest regards,\nCustomer Support Team\n\nEmail Subject: {{ $json.subject || $json.Subject || 'No Subject' }}\nEmail Body: {{ $json.text || $json.snippet || '' }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "1bf38c64-2747-44a8-9995-52a845f3507f",
+      "name": "Message a model",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        -112
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 5,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "3m5lMjnk7kNTnC4B",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gemini Output থেকে ডাটা নেওয়ার সঠিক পাথ\nlet raw = $json.content?.parts?.[0]?.text;\nif (!raw && $json.output?.[0]?.content?.[0]?.text) raw = $json.output[0].content[0].text;\nif (!raw && $json.message?.content !== undefined) raw = $json.message.content;\nif (!raw && $json.choices?.[0]?.message?.content !== undefined) raw = $json.choices[0].message.content;\n\n// Gemini যদি ```json কোড ব্লকে উত্তর দেয়, তা ক্লিন করার জন্য\nif (typeof raw === 'string') {\n  raw = raw.replace(/```json\\n?|\\n?```/g, '').trim();\n}\n\nconst result = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? {});\n\n// Trigger বা Get many messages থেকে ইমেইলের ডাটা নেওয়া\nlet trigger = {};\ntry {\n  trigger = $('On New Email').first().json;\n} catch (e) {\n  try {\n    trigger = $('Get many messages').first().json;\n  } catch (err) {}\n}\n\nreturn {\n  json: {\n    category: result.category, \n    priority: result.priority, \n    draft: result.draft,       \n    originalSubject: trigger.Subject ?? trigger.subject ?? '',\n    originalFrom: trigger.From ?? trigger.from ?? '',\n    originalMessageId: trigger.id ?? '',\n    originalThreadId: trigger.threadId ?? '',\n  },\n};"
+      },
+      "id": "ff0aef1d-6d61-4429-9bb6-fe694bff45f7",
+      "name": "Parse AI Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1QA9cH3LKsprCKM_S6aNwtbstjNWZpbLyrbnAT3QGjHw",
+          "mode": "list",
+          "cachedResultName": "Inbound Email Triage Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QA9cH3LKsprCKM_S6aNwtbstjNWZpbLyrbnAT3QGjHw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1QA9cH3LKsprCKM_S6aNwtbstjNWZpbLyrbnAT3QGjHw/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Catagory": "={{ $json.category }}",
+            "Priority": "={{ $json.priority }}",
+            "Draft Reply": "=\n{{ $json.draft }}",
+            "Date": "={{ $now.format('yyyy-MM-dd HH:mm') }}",
+            "Sender Email": "={{ $json.originalFrom }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Sender Email",
+              "displayName": "Sender Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Catagory",
+              "displayName": "Catagory",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Priority",
+              "displayName": "Priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Draft Reply",
+              "displayName": "Draft Reply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "a84374e4-38f8-4781-a28d-8f38c23946e8",
+      "name": "Append row in sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        752,
+        -112
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "wkjQophorMJeKALz",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "=Re: {{ $('Parse AI Result').first().json.originalSubject }}",
+        "message": "={{ $('Parse AI Result').first().json.draft }}",
+        "options": {
+          "threadId": "={{ $('Parse AI Result').first().json.originalThreadId }}"
+        }
+      },
+      "id": "e6010869-7614-4f20-a1da-4a048ae793d5",
+      "name": "Save Draft in Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        928,
+        -16
+      ],
+      "webhookId": "126b2d47-93b3-4ea7-8bef-e6c318beeada",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nsqhRD6aPOFTMGil",
+          "name": "Gmail account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "tasnimanisa2024@gmail.com",
+        "subject": "=[AI Email] {{ $('Parse AI Result').first().json.priority }} priority · {{ $('Parse AI Result').first().json.category }} · {{ $('Parse AI Result').first().json.originalSubject }}",
+        "emailType": "text",
+        "message": "=New email processed by AI Email Assistant.\n\nCategory: {{ $('Parse AI Result').first().json.category }}\nPriority: {{ $('Parse AI Result').first().json.priority }}\nFrom: {{ $('Parse AI Result').first().json.originalFrom }}\nSubject: {{ $('Parse AI Result').first().json.originalSubject }}\n\nSummary: {{ $('Parse AI Result').first().json.summary }}\n\n--- Draft reply (saved in Gmail Drafts) ---\n{{ $('Parse AI Result').first().json.draft_reply }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c5079551-f0fa-45cd-bb60-69261fd54fc6",
+      "name": "Send Notification Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1088,
+        -128
+      ],
+      "webhookId": "cd27cb1f-54f6-4733-a732-e7ca8a045dd4",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "VmI2qKTL5mlXz8oH",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $('Parse AI Result').first().json.originalMessageId }}"
+      },
+      "id": "da85acc9-e409-439b-8be9-08cd8b232def",
+      "name": "Mark as Read",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        -16
+      ],
+      "webhookId": "4e8629c2-f26c-4c79-8463-b1d18e44ea09",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "VmI2qKTL5mlXz8oH",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On New Email": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Result": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Draft in Gmail": {
+      "main": [
+        [
+          {
+            "node": "Send Notification Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Notification Email": {
+      "main": [
+        [
+          {
+            "node": "Mark as Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Save Draft in Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a87b25a1-45d3-45a8-808b-871735f11fc3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "01f1f21f84bbd2f6bca1f039c23a278c98f614ea0fea3274bee067e95fd2c0c1"
+  },
+  "nodeGroups": [],
+  "id": "zOdC1yag074jVYS9",
+  "tags": []
+}
