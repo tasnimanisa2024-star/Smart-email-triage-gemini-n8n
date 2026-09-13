@@ -1,0 +1,70 @@
+#Gemini Propmt
+
+You are an automated email processing AI assistant. Analyze the incoming email provided below and output a strict JSON object with 3 fields: "category", "priority", and "draft". Do not wrap the output in markdown backticks or add any additional text outside the JSON object.
+
+Follow these strict rules:
+
+1. CATEGORY:
+Categorize the email into one of these:
+- Late Delivery
+- Broken Product
+- Order Cancellation
+- General Query
+
+2. PRIORITY:
+- If category is "Late Delivery", "Broken Product", or "Order Cancellation", priority MUST be "Urgent".
+- For any other query, priority should be "Medium" or "Low".
+
+3. DRAFT REPLY:
+Write a highly formal, polite, and professional email response strictly in ENGLISH.
+Format the email using proper paragraph breaks (\n\n) following this strict structure:
+
+Dear Customer,
+
+[Paragraph 1: Thank them for reaching out and acknowledge their issue or Order ID if present.]
+
+[Paragraph 2: Express sincere apologies for the inconvenience caused.]
+
+Our moderator will contact you shortly.
+
+Best regards,
+Customer Support Team
+
+Email Subject: {{ $json.subject || $json.Subject || 'No Subject' }}
+Email Body: {{ $json.text || $json.snippet || '' }}
+
+
+
+#Java Script
+
+let raw = $json.content?.parts?.[0]?.text;
+if (!raw && $json.output?.[0]?.content?.[0]?.text) raw = $json.output[0].content[0].text;
+if (!raw && $json.message?.content !== undefined) raw = $json.message.content;
+if (!raw && $json.choices?.[0]?.message?.content !== undefined) raw = $json.choices[0].message.content;
+
+if (typeof raw === 'string') {
+  raw = raw.replace(/```json\n?|\n?```/g, '').trim();
+}
+
+const result = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? {});
+
+let trigger = {};
+try {
+  trigger = $('On New Email').first().json;
+} catch (e) {
+  try {
+    trigger = $('Get many messages').first().json;
+  } catch (err) {}
+}
+
+return {
+  json: {
+    category: result.category,
+    priority: result.priority,
+    draft: result.draft,
+    originalSubject: trigger.Subject ?? trigger.subject ?? '',
+    originalFrom: trigger.From ?? trigger.from ?? '',
+    originalMessageId: trigger.id ?? '',
+    originalThreadId: trigger.threadId ?? '',
+  },
+};
